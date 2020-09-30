@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="wafec.wrapt.custom",
-    version="0.0.4",
+    version="0.1.6",
     author="Wallace",
     author_email="wallacefcardoso@gmail.com",
     packages=find_packages(),
@@ -13,6 +13,7 @@ setup(
         "Operating System :: OS Independent"
     ],
     install_requires=[
-        'wrapt>=1.12.1'
+        'wrapt>=1.12.1',
+        'requests>=2.23.0'
     ]
 )

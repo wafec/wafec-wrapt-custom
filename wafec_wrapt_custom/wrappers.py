@@ -3,13 +3,25 @@ from abc import ABC
 import wrapt
 import copy
 
+from wafec_wrapt_custom.managers import DataEvent, DataManagerAdapter
+
+_simple_types = (str, int, type(None), bool, float)
+
 
 class WrapperTest(wrapt.ObjectProxy, ABC):
-    def __init__(self, wrapped):
-        super(WrapperTest, self).__init__(wrapped)
+    def __init__(self, wrapped, wrapper_data=None):
+        super(WrapperTest, self).__init__(WrapperTest.unwrap(wrapped))
+        self._validate_type()
+        self._self_wrapper_data = wrapper_data
+
+    def _validate_type(self):
+        if isinstance(self.__wrapped__, _simple_types):
+            raise TypeError('Cannot be simple')
 
     def __getitem__(self, item):
-        return WrapperTest(super(WrapperTest, self).__getitem__(item))
+        value = super(WrapperTest, self).__getitem__(item)
+        wrapper_data = self.notify_external(item, 'getitem', value)
+        return WrapperTest.will_wrap(value, wrapper_data=wrapper_data)
 
     def __setitem__(self, item, value):
         if isinstance(value, WrapperTest):
@@ -18,7 +30,9 @@ class WrapperTest(wrapt.ObjectProxy, ABC):
             super(WrapperTest, self).__setitem__(item, value)
 
     def __getattr__(self, name):
-        return WrapperTest(super(WrapperTest, self).__getattr__(name))
+        value = super(WrapperTest, self).__getattr__(name)
+        wrapper_data = self.notify_external(name, 'getattr', value)
+        return WrapperTest.will_wrap(value, wrapper_data=wrapper_data)
 
     def __setattr__(self, name, value):
         if isinstance(value, WrapperTest):
@@ -27,27 +41,42 @@ class WrapperTest(wrapt.ObjectProxy, ABC):
             super(WrapperTest, self).__setattr__(name, value)
 
     def __copy__(self):
-        return WrapperTest(copy.copy(self.__wrapped__))
+        return WrapperTest.will_wrap(copy.copy(self.__wrapped__))
 
     def __deepcopy__(self, memodict={}):
-        return WrapperTest(copy.deepcopy(self.__wrapped__, memodict))
+        return WrapperTest.will_wrap(copy.deepcopy(self.__wrapped__, memodict))
 
     def __iter__(self):
-        self._self_n = 0
+        self._self_iter_idx = 0
+        self._self_iter = iter(self.__wrapped__)
         return self
 
     def __next__(self):
-        if self._self_n < len(self):
-            n = self._self_n
-            self._self_n += 1
-            return self[n]
-        else:
-            raise StopIteration
+        value = next(self._self_iter)
+        wrapper_data = self.notify_external(self._self_iter_idx, 'iter', value)
+        self._self_iter_idx += 1
+        return WrapperTest.will_wrap(value, wrapper_data=wrapper_data)
+
+    def notify_external(self, signature, event_name, value):
+        is_callable = False
+        data_type = 'undefined'
+        if value is not None:
+            if isinstance(value, WrapperTest):
+                value = value.__wrapped__
+            is_callable = callable(value)
+            data_type = type(value)
+
+        if self._self_wrapper_data:
+            wrapper_data = WrapperData.of(signature, self._self_wrapper_data)
+            self._self_wrapper_data.manager.notify(DataEvent(wrapper_data.signature, event_name, value, data_type,
+                                                             is_callable))
+            return wrapper_data
+        return self._self_wrapper_data
 
     @staticmethod
-    def wrap_kwargs(kwargs):
+    def wrap_kwargs(kwargs, wrapper_data=None):
         for argname, argvalue in kwargs.items():
-            kwargs[argname] = WrapperTest(argvalue)
+            kwargs[argname] = WrapperTest.will_wrap(argvalue, wrapper_data=WrapperData.of(argname, wrapper_data))
         return kwargs
 
     @staticmethod
@@ -55,3 +84,27 @@ class WrapperTest(wrapt.ObjectProxy, ABC):
         if obj is not None and isinstance(obj, WrapperTest):
             return obj.__wrapped__
         return obj
+
+    @staticmethod
+    def will_wrap(obj, wrapper_data=None):
+        if isinstance(obj, _simple_types):
+            return obj
+        return WrapperTest(obj, wrapper_data=wrapper_data)
+
+    def __call__(self, *args, **kwargs):
+        return self.__wrapped__(*args, **kwargs)
+
+
+class WrapperData(object):
+    def __init__(self, manager, signature):
+        self.manager = manager
+        self.signature = signature
+
+    @staticmethod
+    def of(signature, wrapper_data):
+        if not wrapper_data:
+            return WrapperData(DataManagerAdapter(), signature)
+        if wrapper_data.signature is not None:
+            signature = str(wrapper_data.signature) + ' ' + str(signature)
+        manager = wrapper_data.manager if wrapper_data.manager is not None else DataManagerAdapter()
+        return WrapperData(manager, signature)
