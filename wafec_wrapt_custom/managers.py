@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import psutil
 
 LOG = logging.getLogger(__name__)
 
@@ -12,6 +13,17 @@ class DataEvent(object):
         self.value = str(value)
         self.data_type = str(data_type)
         self.is_callable = is_callable
+        self.process_name = psutil.Process().name()
+
+    def to_dict(self):
+        return {
+            'source': self.source,
+            'event_name': self.event_name,
+            'value': self.value,
+            'is_callable': self.is_callable,
+            'data_type': self.data_type,
+            'process_name': self.process_name
+        }
 
 
 class DataManagerAdapter(object):
@@ -25,13 +37,7 @@ class DataManager(object):
 
     def notify(self, data_event):
         try:
-            data = {
-                'source': data_event.source,
-                'event_name': data_event.event_name,
-                'value': data_event.value,
-                'is_callable': data_event.is_callable,
-                'data_type': data_event.data_type
-            }
+            data = data_event.to_dict()
             headers = {
                 'Content-Type': 'application/json'
             }

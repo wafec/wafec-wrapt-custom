@@ -92,7 +92,9 @@ class WrapperTest(wrapt.ObjectProxy, ABC):
         return WrapperTest(obj, wrapper_data=wrapper_data)
 
     def __call__(self, *args, **kwargs):
-        return self.__wrapped__(*args, **kwargs)
+        value = self.__wrapped__(*args, **kwargs)
+        wrapper_data = self.notify_external(None, 'return', value)
+        return WrapperTest.will_wrap(value, wrapper_data=wrapper_data)
 
 
 class WrapperData(object):
@@ -103,8 +105,34 @@ class WrapperData(object):
     @staticmethod
     def of(signature, wrapper_data):
         if not wrapper_data:
-            return WrapperData(DataManagerAdapter(), signature)
+            return WrapperData(DataManagerAdapter(), WrapperData.get_signature_from_obj(signature, '?'))
         if wrapper_data.signature is not None:
-            signature = str(wrapper_data.signature) + ' ' + str(signature)
+            if signature is not None:
+                signature = WrapperData.signature_join(wrapper_data.signature, signature)
+            else:
+                signature = WrapperData.get_signature_from_obj(wrapper_data.signature)
+        else:
+            signature = WrapperData.get_signature_from_obj(signature, '?')
         manager = wrapper_data.manager if wrapper_data.manager is not None else DataManagerAdapter()
         return WrapperData(manager, signature)
+
+    @staticmethod
+    def get_signature_from_obj(obj, default=None):
+        signature = default
+        if obj is not None:
+            if isinstance(obj, _simple_types):
+                signature = str(obj)
+            else:
+                signature = type(obj).__name__
+        return signature
+
+    @staticmethod
+    def signature_join(*args):
+        signature_list = []
+        for arg in args:
+            if arg is not None:
+                signature_list.append(WrapperData.get_signature_from_obj(arg))
+        if len(signature_list) == 0:
+            return None
+        else:
+            return ' '.join(signature_list)
