@@ -1,7 +1,6 @@
 import requests
 import json
 import logging
-import psutil
 
 LOG = logging.getLogger(__name__)
 
@@ -13,7 +12,7 @@ class DataEvent(object):
         self.value = str(value)
         self.data_type = str(data_type)
         self.is_callable = is_callable
-        self.process_name = psutil.Process().name()
+        self.process_name = 'unset'
 
     def to_dict(self):
         return {
