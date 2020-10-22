@@ -5,7 +5,8 @@ import json
 
 __all__ = [
     'WafecDefaultProxy',
-    'create_proxy'
+    'create_proxy',
+    'WafecDefaultProxyIterator'
 ]
 
 
@@ -78,6 +79,9 @@ class WafecDefaultProxyIterator:
     def __init__(self, wrapped):
         self.wrapped = wrapped
         self.iterator = iter(wrapped)
+
+    def __iter__(self):
+        return self
 
     def __next__(self):
         result = next(self.iterator)

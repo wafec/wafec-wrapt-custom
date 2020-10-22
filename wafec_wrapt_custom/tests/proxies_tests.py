@@ -240,6 +240,17 @@ class WafecDefaultProxyTests(unittest.TestCase):
         inst = pickle.loads(pickle_string)
         self.assertIsInstance(inst, CustomTestClass)
 
+    def test_create_proxy_with_list_when_iterable_is_used(self):
+        l = create_proxy(self.list_x)
+        for item in l:
+            self.assertIsNotNone(item)
+
+    def test_create_proxy_with_list_when_getting_iterable(self):
+        l = create_proxy(self.list_x)
+        it = iter(l)
+        self.assertIsInstance(it, WafecDefaultProxyIterator)
+        self.assertTrue(hasattr(it, '__iter__'))
+
 
 class CustomTestClassBase(object):
     def __init__(self, name):
