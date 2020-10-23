@@ -23,7 +23,7 @@ def _is_allowed(x):
            type(x).__name__ == 'dict_items' or isinstance(x, tuple):
             return True
     if x is not None and type(x) not in _simple_types:
-        if starts_with(_white_list, x):
+        if starts_with(_white_list, fullname(x)):
             return True
     return False
 
