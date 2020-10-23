@@ -3,6 +3,8 @@ import abc
 import copy
 import json
 
+from wafec_wrapt_custom.utility import fullname, starts_with
+
 __all__ = [
     'WafecDefaultProxy',
     'create_proxy',
@@ -12,6 +14,7 @@ __all__ = [
 
 _simple_types = (int, float, str, bool, complex)
 _json_default_encoder_default = json._default_encoder.default
+_white_list = ['nova.']
 
 
 def _is_allowed(x):
@@ -20,7 +23,8 @@ def _is_allowed(x):
            type(x).__name__ == 'dict_items' or isinstance(x, tuple):
             return True
     if x is not None and type(x) not in _simple_types:
-        return True
+        if starts_with(_white_list, x):
+            return True
     return False
 
 
