@@ -61,16 +61,16 @@ def _resolve_json_encoder():
     json._default_encoder.default = default.__get__(json._default_encoder, _json_default_encoder_default)
 
 
-def create_proxy(x, name=None):
+def create_proxy(x, trace=None):
     if _is_allowed(x):
-        return WafecDefaultProxy(x, name=name)
+        return WafecDefaultProxy(x, trace=trace)
     return x
 
 
 class WafecDefaultProxy(wrapt.ObjectProxy, abc.ABC):
-    def __init__(self, wrapped, name=None):
+    def __init__(self, wrapped, trace=None):
         super(WafecDefaultProxy, self).__init__(wrapped)
-        self._self_name = name
+        self._self_trace = trace
 
         _resolve_json_encoder()
 
@@ -83,21 +83,23 @@ class WafecDefaultProxy(wrapt.ObjectProxy, abc.ABC):
         return create_proxy(result)
 
     def __getitem__(self, item):
-        _default_add_proxy_interception_info(item, x=self)
+        trace = create_name(self._self_trace, f'[{item}]')
+        _default_add_proxy_interception_info(item, x=self.__wrapped__, trace=trace)
         result = self.__wrapped__[item]
-        return create_proxy(result, name=create_name(self._self_name, f'[{item}]'))
+        return create_proxy(result, trace=trace)
 
     def __getattr__(self, item):
-        _default_add_proxy_interception_info(item, x=self)
+        trace = create_name(self._self_trace, f'.{item}')
+        _default_add_proxy_interception_info(item, x=self.__wrapped__, trace=trace)
         result = getattr(self.__wrapped__, item)
-        return create_proxy(result, name=create_name(self._self_name, f'.{item}'))
+        return create_proxy(result, trace=trace)
 
     def __call__(self, *args, **kwargs):
         result = self.__wrapped__(*args, **kwargs)
-        return create_proxy(result, name=self._self_name)
+        return create_proxy(result, trace=self._self_trace)
 
     def __iter__(self):
-        return WafecDefaultProxyIterator(self.__wrapped__)
+        return WafecDefaultProxyIterator(self._self_trace, self.__wrapped__)
 
     def __reduce__(self):
         result = self.__wrapped__.__reduce__()
@@ -109,7 +111,8 @@ class WafecDefaultProxy(wrapt.ObjectProxy, abc.ABC):
 
 
 class WafecDefaultProxyIterator:
-    def __init__(self, wrapped):
+    def __init__(self, self_trace, wrapped):
+        self.self_trace = self_trace
         self.wrapped = wrapped
         self.iterator = iter(wrapped)
         self.n = 0
@@ -120,4 +123,5 @@ class WafecDefaultProxyIterator:
     def __next__(self):
         result = next(self.iterator)
         self.n += 1
-        return create_proxy(result, name=f'[{self.n - 1}]')
+        trace = create_name(self.self_trace, f'[{self.n - 1}]')
+        return create_proxy(result, trace=trace)

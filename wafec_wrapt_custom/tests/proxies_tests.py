@@ -5,7 +5,8 @@ import json
 import pickle
 
 from wafec_wrapt_custom.proxies import *
-from wafec_wrapt_custom.proxies import _is_allowed, _white_list, set_default_add_proxy_interception_info, fullname
+from wafec_wrapt_custom.proxies import _is_allowed, _white_list, set_default_add_proxy_interception_info, fullname,\
+    _default_add_proxy_interception_info
 
 
 class ProxiesTests(unittest.TestCase):
@@ -282,31 +283,53 @@ class WafecDefaultProxyTests(unittest.TestCase):
 
     def test_create_proxy_with_name(self):
         o = create_proxy(self.inst_x, 'test1')
-        self.assertEqual('test1', o._self_name)
+        self.assertEqual('test1', o._self_trace)
 
     def test_create_proxy_with_name_when_dict(self):
         d = create_proxy(self.dict_x, 'test1')
         d3 = d['test3']
-        self.assertEqual('test1 [test3]', d3._self_name)
+        self.assertEqual('test1 [test3]', d3._self_trace)
 
     def test_create_proxy_with_name_when_dict_and_first_name_is_not_provided(self):
         d = create_proxy(self.dict_x)
         d3 = d['test3']
-        self.assertEqual('[test3]', d3._self_name)
+        self.assertEqual('[test3]', d3._self_trace)
 
     def test_create_proxy_with_name_when_obj_is_returned_from_method(self):
-        inst = create_proxy(self.inst_x, name='test')
+        inst = create_proxy(self.inst_x, trace='test')
         result = inst.get_data()
-        self.assertEqual('test .get_data', result._self_name)
+        self.assertEqual('test .get_data', result._self_trace)
+
+
+class WafecDefaultProxyInterceptionTests(unittest.TestCase):
+    def setUp(self):
+        self._original = _default_add_proxy_interception_info
+
+        self.inst_x = CustomTestClass('test1', 'description1')
+
+    def tearDown(self):
+        set_default_add_proxy_interception_info(self._original)
 
     def test_create_proxy_and_add_interception(self):
-        def wrapper(item, x):
+        def wrapper(item, x, trace):
             self.assertEqual('get_data', item)
             self.assertIsInstance(x, CustomTestClass)
+            self.assertEqual('proxies_tests.CustomTestClass', fullname(x))
+            self.assertEqual('test .get_data', trace)
         set_default_add_proxy_interception_info(wrapper)
         d = create_proxy(self.inst_x, 'test')
         data = d.get_data()
         self.assertIsNotNone(data)
+
+    def test_create_proxy_and_add_interception_when_method_returns(self):
+        def wrapper(item, x, trace):
+            self.assertEqual('test .get_data [test1]', trace)
+        d = create_proxy(self.inst_x, 'test')
+        data = d.get_data()
+        data['test1'] = 'value1'
+        set_default_add_proxy_interception_info(wrapper)
+        value1 = data['test1']
+        self.assertEqual('value1', value1)
 
 
 class CustomTestClassBase(object):

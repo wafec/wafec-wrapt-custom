@@ -21,8 +21,8 @@ def _post_async(*args, **kwargs):
     thread.start()
 
 
-def add_proxy_interception_info(name, x=None):
+def add_proxy_interception_info(name, x=None, trace=None):
     p = psutil.Process()
     ps = p.name()
-    data = {'ps': ps, 'name': name, 'x': fullname(x)}
+    data = {'ps': ps, 'name': name, 'x': fullname(x), 'trace': trace}
     _post_async(url=f'{base_url}/api/proxy/interception/add', json=data)
