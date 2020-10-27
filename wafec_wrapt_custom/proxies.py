@@ -4,17 +4,42 @@ import copy
 import json
 
 from wafec_wrapt_custom.utility import fullname, starts_with
+from wafec_wrapt_custom.comm.clients import add_proxy_interception_info
 
 __all__ = [
     'WafecDefaultProxy',
     'create_proxy',
-    'WafecDefaultProxyIterator'
+    'WafecDefaultProxyIterator',
+    'add_to_white_list',
+    'create_name'
 ]
 
 
 _simple_types = (int, float, str, bool, complex)
 _json_default_encoder_default = json._default_encoder.default
-_white_list = ['nova.']
+_white_list = ['nova.', 'glance.', 'neutron.', 'cinder.']
+
+_default_add_proxy_interception_info = add_proxy_interception_info
+
+
+def set_default_add_proxy_interception_info(new_func):
+    global _default_add_proxy_interception_info
+    _default_add_proxy_interception_info = new_func
+
+
+def create_name(*args):
+    name = ''
+    for arg in [arg for arg in args if arg]:
+        if type(arg) not in _simple_types and type(arg) not in (list, dict, tuple):
+            name += fullname(arg) + ' '
+        else:
+            name += str(arg) + ' '
+    return name.strip()
+
+
+def add_to_white_list(item):
+    global _white_list
+    _white_list.append(item)
 
 
 def _is_allowed(x):
@@ -22,9 +47,9 @@ def _is_allowed(x):
         if isinstance(x, dict) or isinstance(x, list) or callable(x) or\
            type(x).__name__ == 'dict_items' or isinstance(x, tuple):
             return True
-    if x is not None and type(x) not in _simple_types:
-        if starts_with(_white_list, fullname(x)):
-            return True
+        if x is not None and type(x) not in _simple_types:
+            if starts_with(_white_list, fullname(x)):
+                return True
     return False
 
 
@@ -36,15 +61,17 @@ def _resolve_json_encoder():
     json._default_encoder.default = default.__get__(json._default_encoder, _json_default_encoder_default)
 
 
-def create_proxy(x):
+def create_proxy(x, name=None):
     if _is_allowed(x):
-        return WafecDefaultProxy(x)
+        return WafecDefaultProxy(x, name=name)
     return x
 
 
 class WafecDefaultProxy(wrapt.ObjectProxy, abc.ABC):
-    def __init__(self, wrapped):
+    def __init__(self, wrapped, name=None):
         super(WafecDefaultProxy, self).__init__(wrapped)
+        self._self_name = name
+
         _resolve_json_encoder()
 
     def __copy__(self):
@@ -56,16 +83,18 @@ class WafecDefaultProxy(wrapt.ObjectProxy, abc.ABC):
         return create_proxy(result)
 
     def __getitem__(self, item):
+        _default_add_proxy_interception_info(item, x=self)
         result = self.__wrapped__[item]
-        return create_proxy(result)
+        return create_proxy(result, name=create_name(self._self_name, f'[{item}]'))
 
     def __getattr__(self, item):
+        _default_add_proxy_interception_info(item, x=self)
         result = getattr(self.__wrapped__, item)
-        return create_proxy(result)
+        return create_proxy(result, name=create_name(self._self_name, f'.{item}'))
 
     def __call__(self, *args, **kwargs):
         result = self.__wrapped__(*args, **kwargs)
-        return create_proxy(result)
+        return create_proxy(result, name=self._self_name)
 
     def __iter__(self):
         return WafecDefaultProxyIterator(self.__wrapped__)
@@ -83,10 +112,12 @@ class WafecDefaultProxyIterator:
     def __init__(self, wrapped):
         self.wrapped = wrapped
         self.iterator = iter(wrapped)
+        self.n = 0
 
     def __iter__(self):
         return self
 
     def __next__(self):
         result = next(self.iterator)
-        return create_proxy(result)
+        self.n += 1
+        return create_proxy(result, name=f'[{self.n - 1}]')

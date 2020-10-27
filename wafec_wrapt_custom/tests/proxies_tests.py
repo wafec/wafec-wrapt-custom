@@ -5,7 +5,7 @@ import json
 import pickle
 
 from wafec_wrapt_custom.proxies import *
-from wafec_wrapt_custom.proxies import _is_allowed
+from wafec_wrapt_custom.proxies import _is_allowed, _white_list, set_default_add_proxy_interception_info, fullname
 
 
 class ProxiesTests(unittest.TestCase):
@@ -14,6 +14,9 @@ class ProxiesTests(unittest.TestCase):
             pass
 
         self.callable_x = custom_callable
+        self.inst_x = CustomTestClass('test1', 'description1')
+
+        add_to_white_list('proxies_tests.')
 
     def test_is_allowed_when_dict(self):
         res = _is_allowed({})
@@ -59,6 +62,30 @@ class ProxiesTests(unittest.TestCase):
         res = _is_allowed(None)
         self.assertFalse(res)
 
+    def test_create_name_when_obj(self):
+        name = create_name(self.inst_x)
+        self.assertEqual('proxies_tests.CustomTestClass', name)
+
+    def test_create_name_when_string(self):
+        name = create_name('test')
+        self.assertEqual('test', name)
+
+    def test_create_name_when_number(self):
+        name = create_name(10)
+        self.assertEqual('10', name)
+
+    def test_create_name_when_list(self):
+        name = create_name([1, 2])
+        self.assertEqual('[1, 2]', name)
+
+    def test_create_name_when_dict(self):
+        name = create_name({'test': 'value'})
+        self.assertEqual("{'test': 'value'}", name)
+
+    def test_create_name_with_combination_of_obj_and_text(self):
+        name = create_name(self.inst_x, 'test')
+        self.assertEqual('proxies_tests.CustomTestClass test', name)
+
 
 class WafecDefaultProxyTests(unittest.TestCase):
     def setUp(self):
@@ -76,6 +103,8 @@ class WafecDefaultProxyTests(unittest.TestCase):
         self.list_x[2][0]['test3'] = 'value3'
 
         self.inst_x = CustomTestClass('name1', 'description1')
+
+        _white_list.append('proxies_tests.')
 
     def test_create_proxy_with_dict(self):
         d = create_proxy(self.dict_x)
@@ -250,6 +279,34 @@ class WafecDefaultProxyTests(unittest.TestCase):
         it = iter(l)
         self.assertIsInstance(it, WafecDefaultProxyIterator)
         self.assertTrue(hasattr(it, '__iter__'))
+
+    def test_create_proxy_with_name(self):
+        o = create_proxy(self.inst_x, 'test1')
+        self.assertEqual('test1', o._self_name)
+
+    def test_create_proxy_with_name_when_dict(self):
+        d = create_proxy(self.dict_x, 'test1')
+        d3 = d['test3']
+        self.assertEqual('test1 [test3]', d3._self_name)
+
+    def test_create_proxy_with_name_when_dict_and_first_name_is_not_provided(self):
+        d = create_proxy(self.dict_x)
+        d3 = d['test3']
+        self.assertEqual('[test3]', d3._self_name)
+
+    def test_create_proxy_with_name_when_obj_is_returned_from_method(self):
+        inst = create_proxy(self.inst_x, name='test')
+        result = inst.get_data()
+        self.assertEqual('test .get_data', result._self_name)
+
+    def test_create_proxy_and_add_interception(self):
+        def wrapper(item, x):
+            self.assertEqual('get_data', item)
+            self.assertIsInstance(x, CustomTestClass)
+        set_default_add_proxy_interception_info(wrapper)
+        d = create_proxy(self.inst_x, 'test')
+        data = d.get_data()
+        self.assertIsNotNone(data)
 
 
 class CustomTestClassBase(object):
